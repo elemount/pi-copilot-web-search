@@ -1,0 +1,25 @@
+{
+  "name": "pi-copilot-web-search",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Optional Pi web search: native GPT Responses and direct GitHub HTTP MCP for other models.",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elemount/pi-copilot-web-search.git"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}
