@@ -1,6 +1,6 @@
 {
   "name": "pi-copilot-web-search",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Optional Pi web search: native GPT Responses and direct GitHub HTTP MCP for other models.",
   "type": "module",

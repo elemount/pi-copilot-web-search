@@ -14,6 +14,7 @@ function harness(flag = undefined, model = gpt, search = async () => ({ text: "S
 	const flags = new Map();
 	const notifications = [];
 	const statuses = new Map();
+	const statusCalls = [];
 	const tools = new Map();
 	let activeTools = ["read", "bash"];
 	const pi = {
@@ -26,13 +27,13 @@ function harness(flag = undefined, model = gpt, search = async () => ({ text: "S
 		setActiveTools: names => { activeTools = [...names]; },
 	};
 	const ctx = { model, ui: {
-		setStatus: (name, value) => statuses.set(name, value),
+		setStatus: (name, value) => { statusCalls.push([name, value]); statuses.set(name, value); },
 		notify: (...args) => notifications.push(args),
 	} };
 	extension(pi, search);
 	const emit = (name, event = {}) => handlers.get(name)?.(event, ctx);
 	emit("session_start");
-	return { emit, ctx, flags, statuses, notifications, tools, activeTools: () => [...activeTools],
+	return { emit, ctx, flags, statuses, statusCalls, notifications, tools, activeTools: () => [...activeTools],
 		command: args => commands.get("web-search").handler(args, ctx),
 		search: (query, signal) => tools.get("web_search").execute("test-call", { query }, signal, undefined, ctx),
 	};
@@ -93,7 +94,7 @@ test("non-GPT payloads have no native injection, but expose the MCP function too
 		const original = structuredClone(payload);
 		assert.equal(h.emit("before_provider_request", { payload }), undefined);
 		assert.deepEqual(payload, original);
-		assert.equal(h.statuses.get("web-search"), "web search (mcp)");
+		assert.deepEqual(h.statusCalls, []);
 		assert.deepEqual(h.activeTools(), ["read", "bash", "web_search"]);
 	}
 });
@@ -120,7 +121,7 @@ test("session commands silently turn on/off; status and invalid arguments still 
 			await h.command(action);
 			assert.deepEqual(h.notifications, []);
 			const route = searchRoute(model);
-			assert.equal(h.statuses.get("web-search"), action === "on" && route ? `web search (${route})` : undefined);
+			assert.deepEqual(h.statusCalls, []);
 			assert.equal(h.activeTools().includes("web_search"), action === "on" && route === "mcp");
 			assert.equal(Boolean(h.emit("before_provider_request", { payload: { model: model.id } })), action === "on" && route === "native");
 		}
@@ -133,6 +134,29 @@ test("session commands silently turn on/off; status and invalid arguments still 
 			assert.equal(h.notifications.at(-1)[1], "info");
 		}
 		assert.equal(h.notifications.length, 3);
+	}
+});
+
+test("startup, commands, model switches and searches never touch the footer status", async () => {
+	for (const flag of [undefined, true, false]) {
+		for (const model of [gpt, claude, { ...gpt, provider: "custom" }]) {
+			const h = harness(flag, model);
+			assert.deepEqual(h.statusCalls, []);
+			for (const action of ["off", "on", "status"]) await h.command(action);
+			h.emit("model_select");
+			h.emit("before_provider_request", { payload: { model: model.id } });
+			stream(h, { type: "response.web_search_call.searching" }, model);
+			stream(h, { type: "response.web_search_call.completed" }, model);
+			if (searchRoute(model) === "native") {
+				citations(h);
+				assert.match(finish(h).message.content.at(-1).text, /Web search sources/);
+			} else if (searchRoute(model) === "mcp") {
+				await h.search("A public question");
+			}
+			h.emit("agent_end");
+			h.emit("session_start");
+			assert.deepEqual(h.statusCalls, []);
+		}
 	}
 });
 
@@ -213,7 +237,7 @@ test("MCP tool stays inactive with an explicit off flag and is enabled only on n
 test("model switching adds/removes only the MCP tool and keeps the search toggle", async () => {
 	const h = harness(true);
 	assert.deepEqual(h.activeTools(), ["read", "bash"]);
-	assert.equal(h.statuses.get("web-search"), "web search (native)");
+	assert.deepEqual(h.statusCalls, []);
 	h.ctx.model = claude;
 	h.emit("model_select");
 	assert.deepEqual(h.activeTools(), ["read", "bash", "web_search"]);

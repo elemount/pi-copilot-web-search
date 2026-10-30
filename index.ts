@@ -21,18 +21,12 @@ export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearc
 		default: true,
 	});
 
-	function updateStatus(ctx: ExtensionContext): void {
-		const route = searchRoute(ctx.model);
-		ctx.ui.setStatus("web-search", enabled && route ? `web search (${route})` : undefined);
-	}
-
 	function updateTools(ctx: ExtensionContext): void {
 		const tools = pi.getActiveTools();
 		const shouldEnable = enabled && searchRoute(ctx.model) === "mcp";
 		if (tools.includes("web_search") !== shouldEnable) {
 			pi.setActiveTools([...tools.filter(name => name !== "web_search"), ...(shouldEnable ? ["web_search"] : [])]);
 		}
-		updateStatus(ctx);
 	}
 
 	pi.registerTool({
@@ -98,27 +92,22 @@ export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearc
 		return addSearch(event.payload, ctx.model);
 	});
 
-	pi.on("provider_stream_event", (event, ctx) => {
+	pi.on("provider_stream_event", event => {
 		if (!active || event.provider !== active.provider || event.model !== active.model || event.api !== "openai-responses") return;
 		active.collector.consume(event.data);
-		const type = record(event.data).type;
-		if (type === "response.web_search_call.searching") ctx.ui.setStatus("web-search", "web search (native): searching…");
-		else if (type === "response.web_search_call.completed") updateStatus(ctx);
 	});
 
-	pi.on("message_end", (event, ctx) => {
+	pi.on("message_end", event => {
 		const message = event.message;
 		if (!active || message.role !== "assistant" || message.provider !== active.provider || message.model !== active.model) return;
 		const collector = active.collector;
 		active = undefined;
-		updateStatus(ctx);
 		const sources = collector.getSources();
 		if (!collector.completed || !sources.length || message.stopReason === "error" || message.stopReason === "aborted") return;
 		return { message: { ...message, content: [...message.content, { type: "text" as const, text: "\n\n" + formatSources(sources) }] } };
 	});
 
-	pi.on("agent_end", (_event, ctx) => {
+	pi.on("agent_end", () => {
 		active = undefined;
-		updateStatus(ctx);
 	});
 }

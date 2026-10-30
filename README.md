@@ -46,7 +46,7 @@ Change it inside a session:
 /web-search status
 ```
 
-The `on` and `off` commands are silent; `/web-search` or `/web-search status` displays the current state and route. The footer status shows `native` or `mcp`. Switching models automatically selects the route and adds/removes this extension's MCP function tool, preserving other active tools. The command changes in-memory state only; a restart or `/reload` resets it to the CLI flag's value. There is no entry in Pi's built-in `/settings` menu.
+The `on` and `off` commands are silent; `/web-search` or `/web-search status` displays the current state and route. No footer status is displayed, including while searching. Switching models automatically selects the route and adds/removes this extension's MCP function tool, preserving other active tools. The command changes in-memory state only; a restart or `/reload` resets it to the CLI flag's value. There is no entry in Pi's built-in `/settings` menu.
 
 This extension manages its own search availability. When enabled, it activates `web_search` on non-GPT models, even if the initial `--tools` selection did not include it. Native search is a server-side capability, not a Pi local tool. **Use `/web-search off` to disable both routes**; `--no-tools` and `--no-mcp` are not this extension's off switch.
 
@@ -89,4 +89,4 @@ npm test
 
 Pi supplies the runtime peer dependencies. There are no bundled SDK copies or additional runtime dependencies.
 
-Tests mock HTTP and cover routing, on/off state, model switches, native citations, GitHub authentication, JSON/SSE MCP transport, session cleanup, cancellation, timeouts, response bounds, and secret-safe failures. They do not make network requests.
+Tests mock HTTP and cover routing, silent on/off state, absence of footer statuses throughout the lifecycle, model switches, native citations, GitHub authentication, JSON/SSE MCP transport, session cleanup, cancellation, timeouts, response bounds, and secret-safe failures. They do not make network requests.
