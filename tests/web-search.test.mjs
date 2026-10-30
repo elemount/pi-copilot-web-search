@@ -8,7 +8,7 @@ const { default: extension } = await import("../index.ts");
 const gpt = { provider: "github-copilot", id: "gpt-6.1-sol", api: "openai-responses" };
 const claude = { provider: "github-copilot", id: "claude-sonnet-5.5", api: "anthropic-messages" };
 
-function harness(flag = false, model = gpt, search = async () => ({ text: "Search answer", sources: [] })) {
+function harness(flag = undefined, model = gpt, search = async () => ({ text: "Search answer", sources: [] })) {
 	const handlers = new Map();
 	const commands = new Map();
 	const flags = new Map();
@@ -18,7 +18,7 @@ function harness(flag = false, model = gpt, search = async () => ({ text: "Searc
 	let activeTools = ["read", "bash"];
 	const pi = {
 		registerFlag: (name, options) => flags.set(name, options),
-		getFlag: () => flag,
+		getFlag: name => flag ?? flags.get(name)?.default,
 		registerCommand: (name, command) => commands.set(name, command),
 		on: (name, handler) => handlers.set(name, handler),
 		registerTool: tool => tools.set(tool.name, tool),
@@ -54,13 +54,26 @@ function citations(h) {
 	} });
 }
 
-test("default off and a boolean CLI option", () => {
+test("default on and a boolean CLI option, without startup notifications", () => {
 	const h = harness();
 	assert.deepEqual(h.flags.get("web-search"), {
-		type: "boolean", default: false,
+		type: "boolean", default: true,
 		description: "Enable web search: GPT native Responses; other models via GitHub MCP",
 	});
-	assert.equal(h.emit("before_provider_request", { payload: { model: gpt.id } }), undefined);
+	assert.ok(h.emit("before_provider_request", { payload: { model: gpt.id } }));
+	assert.deepEqual(h.notifications, []);
+	const mcp = harness(undefined, claude);
+	assert.deepEqual(mcp.activeTools(), ["read", "bash", "web_search"]);
+	assert.deepEqual(mcp.notifications, []);
+});
+
+test("explicit false disables native search and the MCP tool", () => {
+	for (const model of [gpt, claude]) {
+		const h = harness(false, model);
+		assert.equal(h.emit("before_provider_request", { payload: { model: model.id } }), undefined);
+		assert.deepEqual(h.activeTools(), ["read", "bash"]);
+		assert.equal(h.statuses.get("web-search"), undefined);
+	}
 });
 
 test("flag enables search without mutating tools or forcing search", () => {
@@ -100,16 +113,27 @@ test("existing web search tools are not duplicated or reconfigured", () => {
 	assert.deepEqual(addSearch({ model: gpt.id }, gpt).tools, [{ type: "web_search" }]);
 });
 
-test("session command on/off/status, invalid arguments don't change state", async () => {
-	const h = harness();
-	await h.command("on");
-	assert.ok(h.emit("before_provider_request", { payload: { model: gpt.id } }));
-	await h.command("invalid");
-	assert.equal(h.notifications.at(-1)[1], "warning");
-	await h.command("off");
-	assert.equal(h.emit("before_provider_request", { payload: { model: gpt.id } }), undefined);
-	await h.command("status");
-	assert.match(h.notifications.at(-1)[0], /off/);
+test("session commands silently turn on/off; status and invalid arguments still notify", async () => {
+	for (const model of [gpt, claude, { ...gpt, provider: "custom" }]) {
+		const h = harness(undefined, model);
+		for (const action of ["on", "off", "off", "on", "on", "off"]) {
+			await h.command(action);
+			assert.deepEqual(h.notifications, []);
+			const route = searchRoute(model);
+			assert.equal(h.statuses.get("web-search"), action === "on" && route ? `web search (${route})` : undefined);
+			assert.equal(h.activeTools().includes("web_search"), action === "on" && route === "mcp");
+			assert.equal(Boolean(h.emit("before_provider_request", { payload: { model: model.id } })), action === "on" && route === "native");
+		}
+		await h.command("invalid");
+		assert.equal(h.notifications.at(-1)[1], "warning");
+		assert.equal(h.emit("before_provider_request", { payload: { model: model.id } }), undefined);
+		for (const action of ["status", ""]) {
+			await h.command(action);
+			assert.match(h.notifications.at(-1)[0], /off/);
+			assert.equal(h.notifications.at(-1)[1], "info");
+		}
+		assert.equal(h.notifications.length, 3);
+	}
 });
 
 test("citations are persisted in the answer, unrelated stream events ignored", () => {
@@ -169,7 +193,7 @@ test("routing selects native GPT or MCP for all other models, never a silent GPT
 	assert.equal(searchRoute(undefined), undefined);
 });
 
-test("MCP tool is off by default and enabled only on non-GPT models", async () => {
+test("MCP tool stays inactive with an explicit off flag and is enabled only on non-GPT models", async () => {
 	let calls = 0;
 	const h = harness(false, claude, async () => { calls++; return { text: "Answer", sources: [] }; });
 	assert.equal(h.tools.get("web_search").defaultActive, false);
@@ -234,7 +258,7 @@ test("no MCP request from GPT native payload hooks, and tool failures are saniti
 });
 
 test("off clears pending native citations and session_start restores the CLI default", async () => {
-	const h = harness(true);
+	const h = harness();
 	h.emit("before_provider_request", { payload: { model: gpt.id } });
 	citations(h);
 	await h.command("off");

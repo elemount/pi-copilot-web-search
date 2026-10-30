@@ -12,13 +12,13 @@ const defaultMcpSearch: McpSearch = async (query, signal) => {
 };
 
 export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearch = defaultMcpSearch): void {
-	let enabled = false;
+	let enabled = true;
 	let active: { provider: string; model: string; collector: SearchCollector } | undefined;
 
 	pi.registerFlag("web-search", {
 		description: "Enable web search: GPT native Responses; other models via GitHub MCP",
 		type: "boolean",
-		default: false,
+		default: true,
 	});
 
 	function updateStatus(ctx: ExtensionContext): void {
@@ -83,6 +83,7 @@ export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearc
 				enabled = action === "on";
 				active = undefined;
 				updateTools(ctx);
+				return;
 			}
 			const route = searchRoute(ctx.model);
 			const applicability = route === "native" ? "GPT native Responses" : route === "mcp" ? "GitHub HTTP MCP; requires GitHub Copilot login" : "unavailable for this model/API";
