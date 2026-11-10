@@ -1,5 +1,7 @@
 /** Optional web search: native GPT Responses, direct GitHub HTTP MCP for other models. */
+import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { addSearch, record, searchRoute, supportsSearch } from "./core.ts";
 import { McpSearchError, resolveMcpAuth, searchGitHubMcp, type McpSearch } from "./mcp.ts";
@@ -38,6 +40,14 @@ export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearc
 		exposure: "model-only",
 		defaultActive: false,
 		annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+		renderCall(args, theme, context) {
+			const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
+			const query = typeof args?.query === "string"
+				? stripVTControlCharacters(args.query).replace(/[\s\x00-\x1f\x7f-\x9f]+/g, " ").trim()
+				: "";
+			text.setText(theme.fg("toolTitle", theme.bold("Web Search")) + (query ? theme.fg("muted", ` · ${query}`) : ""));
+			return text;
+		},
 		async execute(_toolCallId, params, signal, onUpdate, ctx) {
 			if (!enabled) throw new Error("Web search is off. Enable it with /web-search on.");
 			if (searchRoute(ctx.model) !== "mcp") throw new Error("The MCP web_search tool is unavailable for this model; supported GPT models use native search.");

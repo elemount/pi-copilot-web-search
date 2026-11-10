@@ -59,6 +59,8 @@ This extension manages its own search availability. When enabled, it activates `
 
 ## Other models: direct GitHub MCP route
 
+The tool card displays `Web Search · your search question` in its header, both while searching and after completion. Terminal escape sequences are removed and whitespace/control characters are normalized for display; the actual query sent to the service is unchanged.
+
 Sign in once with `/login github-copilot`. This login is needed even if the selected model is on Anthropic, Google, or another provider. Alternatively, explicitly set `COPILOT_GITHUB_TOKEN` to an original GitHub OAuth token. A saved GitHub Copilot OAuth login takes precedence over that environment variable. The short-lived Copilot inference access token does **not** authenticate this MCP service.
 
 For every actual search, the extension:
@@ -89,4 +91,4 @@ npm test
 
 Pi supplies the runtime peer dependencies. There are no bundled SDK copies or additional runtime dependencies.
 
-Tests mock HTTP and cover routing, silent on/off state, absence of footer statuses throughout the lifecycle, model switches, unchanged native answers and MCP text without source appendices, GitHub authentication, JSON/SSE MCP transport, session cleanup, cancellation, timeouts, response bounds, and secret-safe failures. They do not make network requests.
+Tests mock HTTP and cover routing, silent on/off state, absence of footer statuses throughout the lifecycle, model switches, query headers and streaming argument rendering, unchanged native answers and MCP text without source appendices, GitHub authentication, JSON/SSE MCP transport, session cleanup, cancellation, timeouts, response bounds, and secret-safe failures. They do not make network requests.

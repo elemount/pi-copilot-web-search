@@ -246,6 +246,54 @@ test("model switching adds/removes only the MCP tool and keeps the search toggle
 	assert.equal(h.statuses.get("web-search"), undefined);
 });
 
+test("MCP tool call header shows a readable title and query without parameter syntax", () => {
+	const tool = harness(true, claude).tools.get("web_search");
+	const theme = { fg: (_color, text) => text, bold: text => text };
+	const cases = [
+		["MySQL 8.4 replication", "MySQL 8.4 replication"],
+		['搜索 "MySQL"\n复制延迟\t\x1b[31m', '搜索 "MySQL" 复制延迟'],
+		["  MySQL\x00\x07\x85replication  ", "MySQL replication"],
+		["long query ".repeat(30), "long query ".repeat(30).trimEnd()],
+	];
+	for (const [query, expected] of cases) {
+		for (const expanded of [false, true]) {
+			const component = tool.renderCall({ query }, theme, { expanded });
+			assert.equal(component.render(1_000).join("\n").trimEnd(), `Web Search · ${expected}`);
+		}
+	}
+});
+
+test("MCP tool call header handles streaming arguments and reuses its component", () => {
+	const tool = harness(true, claude).tools.get("web_search");
+	const theme = { fg: (_color, text) => text, bold: text => text };
+	let lastComponent;
+	for (const [args, expected] of [
+		[undefined, "Web Search"],
+		[{}, "Web Search"],
+		[{ query: "MySQL" }, "Web Search · MySQL"],
+		[{ query: "MySQL 8.4" }, "Web Search · MySQL 8.4"],
+		[{ query: 42 }, "Web Search"],
+		[{ query: " \n\t" }, "Web Search"],
+	]) {
+		const component = tool.renderCall(args, theme, { lastComponent });
+		if (lastComponent) assert.equal(component, lastComponent);
+		assert.equal(component.render(100).join("\n").trimEnd(), expected);
+		lastComponent = component;
+	}
+});
+
+test("MCP tool call header wraps Chinese queries within narrow terminal widths", async () => {
+	const { visibleWidth } = await import("@earendil-works/pi-tui");
+	const tool = harness(true, claude).tools.get("web_search");
+	const theme = { fg: (_color, text) => text, bold: text => text };
+	const component = tool.renderCall({ query: "搜索 MySQL 8.4 复制延迟与并行复制" }, theme, {});
+	for (const width of [12, 20, 40]) {
+		const lines = component.render(width);
+		assert.ok(lines.length > 1);
+		assert.ok(lines.every(line => visibleWidth(line) <= width));
+	}
+});
+
 test("MCP tool returns answer text unchanged, keeping structured sources only in details", async () => {
 	const controller = new AbortController();
 	const calls = [];
