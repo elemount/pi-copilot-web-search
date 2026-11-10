@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatMcpResult, parseSearchResult, resolveMcpAuth, searchGitHubMcp } from "../mcp.ts";
+import { parseSearchResult, resolveMcpAuth, searchGitHubMcp } from "../mcp.ts";
 
 const TOKEN = "github-test-secret";
 const auth = { endpoint: "https://api.enterprise.githubcopilot.com/mcp/readonly", token: TOKEN };
@@ -104,8 +104,7 @@ test("parses text-only envelopes, deduplicates sources, filters unsafe URLs and 
 	const bad = structuredClone(answer);
 	bad.text.annotations.push(...bad.text.annotations, ...["javascript:alert(1)", "https://user:password@example.com", "https://example.com/\nforged", "not a URL"].map(url => ({ url_citation: { url } })));
 	assert.deepEqual(parseSearchResult({ structuredContent: bad }).sources, [{ title: "Official docs", url: "https://example.com/docs" }]);
-	assert.match(formatMcpResult(parseSearchResult(toolResult)), /Web search sources/);
-	assert.equal(formatMcpResult({ text: "plain", sources: [] }), "plain");
+	assert.equal(parseSearchResult(toolResult).text, answer.text.value);
 });
 
 test("tool errors and empty answers are failures, while large text results are bounded", () => {

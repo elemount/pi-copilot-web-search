@@ -1,8 +1,8 @@
 /** Optional web search: native GPT Responses, direct GitHub HTTP MCP for other models. */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { addSearch, formatSources, record, SearchCollector, searchRoute, supportsSearch } from "./core.ts";
-import { formatMcpResult, McpSearchError, resolveMcpAuth, searchGitHubMcp, type McpSearch } from "./mcp.ts";
+import { addSearch, record, searchRoute, supportsSearch } from "./core.ts";
+import { McpSearchError, resolveMcpAuth, searchGitHubMcp, type McpSearch } from "./mcp.ts";
 
 const defaultMcpSearch: McpSearch = async (query, signal) => {
 	// Read only when a search is executed; never log, persist, or cache credentials.
@@ -13,7 +13,6 @@ const defaultMcpSearch: McpSearch = async (query, signal) => {
 
 export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearch = defaultMcpSearch): void {
 	let enabled = true;
-	let active: { provider: string; model: string; collector: SearchCollector } | undefined;
 
 	pi.registerFlag("web-search", {
 		description: "Enable web search: GPT native Responses; other models via GitHub MCP",
@@ -46,7 +45,7 @@ export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearc
 			try {
 				const result = await mcpSearch(params.query, signal);
 				return {
-					content: [{ type: "text", text: formatMcpResult(result) }],
+					content: [{ type: "text", text: result.text }],
 					details: { route: "mcp", sources: result.sources },
 				};
 			} catch (error) {
@@ -57,11 +56,9 @@ export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearc
 
 	pi.on("session_start", (_event, ctx) => {
 		enabled = pi.getFlag("web-search") === true;
-		active = undefined;
 		updateTools(ctx);
 	});
 	pi.on("model_select", (_event, ctx) => {
-		active = undefined;
 		updateTools(ctx);
 	});
 
@@ -75,7 +72,6 @@ export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearc
 			}
 			if (action !== "status") {
 				enabled = action === "on";
-				active = undefined;
 				updateTools(ctx);
 				return;
 			}
@@ -88,26 +84,7 @@ export default function webSearchExtension(pi: ExtensionAPI, mcpSearch: McpSearc
 	pi.on("before_provider_request", (event, ctx) => {
 		// Only GPT native search needs payload injection. MCP is an ordinary registered tool.
 		if (!enabled || !supportsSearch(ctx.model) || record(event.payload).model !== ctx.model?.id) return;
-		active = { provider: ctx.model!.provider, model: ctx.model!.id, collector: new SearchCollector() };
 		return addSearch(event.payload, ctx.model);
 	});
 
-	pi.on("provider_stream_event", event => {
-		if (!active || event.provider !== active.provider || event.model !== active.model || event.api !== "openai-responses") return;
-		active.collector.consume(event.data);
-	});
-
-	pi.on("message_end", event => {
-		const message = event.message;
-		if (!active || message.role !== "assistant" || message.provider !== active.provider || message.model !== active.model) return;
-		const collector = active.collector;
-		active = undefined;
-		const sources = collector.getSources();
-		if (!collector.completed || !sources.length || message.stopReason === "error" || message.stopReason === "aborted") return;
-		return { message: { ...message, content: [...message.content, { type: "text" as const, text: "\n\n" + formatSources(sources) }] } };
-	});
-
-	pi.on("agent_end", () => {
-		active = undefined;
-	});
 }

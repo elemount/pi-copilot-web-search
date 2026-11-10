@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import "./runtime.mjs";
-import { addSearch, SearchCollector, searchRoute, supportsSearch } from "../core.ts";
+import { addSearch, searchRoute, supportsSearch } from "../core.ts";
 import { McpSearchError } from "../mcp.ts";
 const { default: extension } = await import("../index.ts");
 
@@ -149,7 +149,7 @@ test("startup, commands, model switches and searches never touch the footer stat
 			stream(h, { type: "response.web_search_call.completed" }, model);
 			if (searchRoute(model) === "native") {
 				citations(h);
-				assert.match(finish(h).message.content.at(-1).text, /Web search sources/);
+				assert.equal(finish(h), undefined);
 			} else if (searchRoute(model) === "mcp") {
 				await h.search("A public question");
 			}
@@ -160,15 +160,18 @@ test("startup, commands, model switches and searches never touch the footer stat
 	}
 });
 
-test("citations are persisted in the answer, unrelated stream events ignored", () => {
+test("completed native searches never rewrite answers or append source lists", () => {
 	const h = harness(true);
 	h.emit("before_provider_request", { payload: { model: gpt.id } });
 	citations(h);
-	stream(h, { type: "response.output_text.annotation.added", annotation: { url: "https://unrelated.example" } }, claude);
-	const result = finish(h);
-	assert.match(result.message.content.at(-1).text, /Web search sources/);
-	assert.match(result.message.content.at(-1).text, /https:\/\/docs.github.com\/en\/copilot/);
-	assert.doesNotMatch(result.message.content.at(-1).text, /unrelated/);
+	const message = {
+		role: "assistant", provider: gpt.provider, model: gpt.id, api: gpt.api,
+		content: [{ type: "text", text: "Answer with [docs](https://docs.github.com/en/copilot)." }],
+		stopReason: "stop",
+	};
+	const original = structuredClone(message);
+	assert.equal(h.emit("message_end", { message }), undefined);
+	assert.deepEqual(message, original);
 	assert.equal(finish(h), undefined);
 });
 
@@ -193,16 +196,6 @@ test("retry resets previous citations; GPT to Claude switch does not leak them",
 	h.emit("model_select");
 	assert.equal(finish(h, { model: claude.id }), undefined);
 	assert.equal(h.emit("before_provider_request", { payload: { model: claude.id } }), undefined);
-});
-
-test("collector deduplicates, filters non-http URLs, captures message annotations", () => {
-	const collector = new SearchCollector();
-	collector.consume({ type: "response.output_text.annotation.added", annotation: { url: "https://example.com", title: "Example" } });
-	collector.consume({ type: "response.output_item.done", item: { type: "message", content: [{ annotations: [
-		{ type: "url_citation", url: "https://example.com" },
-		{ url: "javascript:alert(1)" }, { url: "not a URL" },
-	] }] } });
-	assert.deepEqual(collector.getSources(), [{ url: "https://example.com", title: "Example" }]);
 });
 
 test("routing selects native GPT or MCP for all other models, never a silent GPT fallback", () => {
@@ -253,18 +246,16 @@ test("model switching adds/removes only the MCP tool and keeps the search toggle
 	assert.equal(h.statuses.get("web-search"), undefined);
 });
 
-test("MCP tool forwards only query and cancellation, preserving source URLs in its result", async () => {
+test("MCP tool returns answer text unchanged, keeping structured sources only in details", async () => {
 	const controller = new AbortController();
 	const calls = [];
 	const h = harness(true, claude, async (...args) => {
 		calls.push(args);
-		return { text: "Verified answer", sources: [{ title: "Official docs", url: "https://example.com/docs" }] };
+		return { text: "Verified answer with [docs](https://example.com/docs).", sources: [{ title: "Official docs", url: "https://example.com/docs" }] };
 	});
 	const result = await h.search("A public question", controller.signal);
 	assert.deepEqual(calls, [["A public question", controller.signal]]);
-	assert.match(result.content[0].text, /Verified answer/);
-	assert.match(result.content[0].text, /Web search sources/);
-	assert.match(result.content[0].text, /https:\/\/example.com\/docs/);
+	assert.deepEqual(result.content, [{ type: "text", text: "Verified answer with [docs](https://example.com/docs)." }]);
 	assert.deepEqual(result.details, { route: "mcp", sources: [{ title: "Official docs", url: "https://example.com/docs" }] });
 });
 
@@ -281,7 +272,7 @@ test("no MCP request from GPT native payload hooks, and tool failures are saniti
 	await assert.rejects(safe.search("test"), /Sign in again/);
 });
 
-test("off clears pending native citations and session_start restores the CLI default", async () => {
+test("off leaves native answers untouched and session_start restores the CLI default", async () => {
 	const h = harness();
 	h.emit("before_provider_request", { payload: { model: gpt.id } });
 	citations(h);

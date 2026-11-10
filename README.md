@@ -54,7 +54,7 @@ This extension manages its own search availability. When enabled, it activates `
 
 - Existing function tools and `tool_choice` are preserved. Search is available, not forced every turn.
 - Existing `web_search` / `web_search_preview` declarations are not duplicated.
-- Source URLs from provider citation events are appended to the assistant answer and retained in the transcript.
+- Assistant answers are left unchanged. The extension does not collect provider citation events or append a source list.
 - Not every GPT model/account supports native search. API rejection is surfaced normally, with no automatic fallback or model switch.
 
 ## Other models: direct GitHub MCP route
@@ -66,7 +66,7 @@ For every actual search, the extension:
 1. Reads the saved GitHub OAuth token in memory, without caching or changing the credential file.
 2. Derives the account-specific `https://api.<account>.githubcopilot.com/mcp/readonly` endpoint from Copilot credential metadata; otherwise uses `https://api.githubcopilot.com/mcp/readonly`.
 3. Performs MCP `initialize` → `notifications/initialized` → `tools/call` for **only** `web_search`, with `X-MCP-Tools: web_search`.
-4. Returns the search agent's answer and any structured source citations as the tool result. A plain-text answer, including links in that text, is retained if structured citations are absent.
+4. Returns the search agent's answer text without appending a source list. Existing inline links are preserved; structured source citations are retained only in tool result `details`, not added to model-facing text.
 5. Closes a server-assigned MCP session when present.
 
 The search service is an AI-powered agent, not a raw list of search results. The model is not changed, and the full conversation is not forwarded to the search service: the tool sends only its `query`. **Queries are sent to GitHub's public-web search service even when the selected model uses another provider. Do not include secrets or private repository content.** Search output is untrusted evidence, not instructions.
@@ -89,4 +89,4 @@ npm test
 
 Pi supplies the runtime peer dependencies. There are no bundled SDK copies or additional runtime dependencies.
 
-Tests mock HTTP and cover routing, silent on/off state, absence of footer statuses throughout the lifecycle, model switches, native citations, GitHub authentication, JSON/SSE MCP transport, session cleanup, cancellation, timeouts, response bounds, and secret-safe failures. They do not make network requests.
+Tests mock HTTP and cover routing, silent on/off state, absence of footer statuses throughout the lifecycle, model switches, unchanged native answers and MCP text without source appendices, GitHub authentication, JSON/SSE MCP transport, session cleanup, cancellation, timeouts, response bounds, and secret-safe failures. They do not make network requests.

@@ -1,4 +1,4 @@
-import { formatSources, record, type Source } from "./core.ts";
+import { record, type Source } from "./core.ts";
 
 export interface McpAuth { endpoint: string; token: string }
 export interface McpSearchResult { text: string; sources: Source[] }
@@ -113,10 +113,6 @@ export function parseSearchResult(value: unknown): McpSearchResult {
 		}
 	}
 	return { text, sources: [...sources.values()] };
-}
-
-export function formatMcpResult(result: McpSearchResult): string {
-	return result.text + (result.sources.length ? "\n\n" + formatSources(result.sources) : "");
 }
 
 /** A fresh, bounded Streamable HTTP MCP exchange for each search. No subprocess or Pi MCP server. */
